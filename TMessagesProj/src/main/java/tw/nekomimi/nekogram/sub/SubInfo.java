@@ -39,7 +39,10 @@ public class SubInfo implements Mappable {
         if (name.length() < 10) return name;
 
         return name.substring(0, 10) + "...";
+    }
 
+    public boolean isPublic() {
+        return id == 1;
     }
 
     public List<String> reloadProxies() throws IOException {
