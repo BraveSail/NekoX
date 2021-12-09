@@ -2856,7 +2856,9 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
             actionModeOtherItem.addSubItem(forward, R.drawable.baseline_forward_24, LocaleController.getString("Forward", R.string.Forward));
         }
 
-        if (currentEncryptedChat == null || NekoXConfig.disableFlagSecure) {
+        boolean noforward = getMessagesController().isChatNoForwards(currentChat);
+
+        if (currentEncryptedChat == null || NekoXConfig.disableFlagSecure && !noforward) {
             actionModeOtherItem.addSubItem(nkbtn_forward_noquote, R.drawable.baseline_fast_forward_24, LocaleController.getString("NoQuoteForward", R.string.NoQuoteForward));
             actionModeOtherItem.addSubItem(star, R.drawable.baseline_favorite_20, LocaleController.getString("AddToFavorites", R.string.AddToFavorites));
             actionModeOtherItem.addSubItem(save_to, R.drawable.msg_download, LocaleController.getString("SaveToMusic", R.string.SaveToMusic));
@@ -2864,8 +2866,9 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
 
         actionModeOtherItem.addSubItem(nkbtn_translate, R.drawable.ic_translate, LocaleController.getString("Translate", R.string.Translate));
         actionModeOtherItem.addSubItem(nkbtn_unpin, R.drawable.deproko_baseline_pin_undo_24, LocaleController.getString("UnpinMessage", R.string.UnpinMessage));
-        actionModeOtherItem.addSubItem(nkbtn_savemessage, R.drawable.baseline_bookmark_24, LocaleController.getString("AddToSavedMessages", R.string.AddToSavedMessages));
-        if (NekomuraConfig.showRepeat.Bool())
+        if (!noforward)
+            actionModeOtherItem.addSubItem(nkbtn_savemessage, R.drawable.baseline_bookmark_24, LocaleController.getString("AddToSavedMessages", R.string.AddToSavedMessages));
+        if (NekomuraConfig.showRepeat.Bool() && !noforward)
             actionModeOtherItem.addSubItem(nkbtn_repeat, R.drawable.msg_repeat, LocaleController.getString("Repeat", R.string.Repeat));
 
         if (NekomuraConfig.showMessageHide.Bool()) {
@@ -18553,7 +18556,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                     bottomOverlayChat.setVisibility(View.INVISIBLE);
                     chatActivityEnterView.setFieldFocused();
                     AndroidUtilities.runOnUIThread(() -> chatActivityEnterView.openKeyboard(), 100);
-                } else {
+                } else if (!canSendInCommentGroup()) {
                     bottomOverlayChat.setVisibility(View.VISIBLE);
                     chatActivityEnterView.setFieldFocused(false);
                     chatActivityEnterView.setVisibility(View.INVISIBLE);
@@ -20822,25 +20825,30 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                                 icons.add(R.drawable.baseline_star_24);
                             }
                         }
+                        boolean noforward = getMessagesController().isChatNoForwards(currentChat);
                         if (!selectedObject.isSponsored() && chatMode != MODE_SCHEDULED && !selectedObject.needDrawBluredPreview() && !selectedObject.isLiveLocation() && selectedObject.type != 16 && !getMessagesController().isChatNoForwards(currentChat)) {
                             items.add(LocaleController.getString("Forward", R.string.Forward));
                             options.add(2);
                             icons.add(R.drawable.baseline_forward_24);
                         }
                         if (chatMode != MODE_SCHEDULED && !selectedObject.needDrawBluredPreview() && !selectedObject.isLiveLocation() && selectedObject.type != 16) {
-                            items.add(LocaleController.getString("NoQuoteForward", R.string.NoQuoteForward));
-                            options.add(nkbtn_forward_noquote);
-                            icons.add(R.drawable.baseline_fast_forward_24);
+                            if (!noforward) {
+                                items.add(LocaleController.getString("NoQuoteForward", R.string.NoQuoteForward));
+                                options.add(nkbtn_forward_noquote);
+                                icons.add(R.drawable.baseline_fast_forward_24);
+                            }
                         }
                         if (chatMode != MODE_SCHEDULED) {
                             if (!UserObject.isUserSelf(currentUser) && NekomuraConfig.showAddToSavedMessages.Bool()) {
-                                items.add(LocaleController.getString("AddToSavedMessages", R.string.AddToSavedMessages));
-                                options.add(nkbtn_savemessage);
-                                icons.add(R.drawable.baseline_bookmark_24);
+                                if (!noforward) {
+                                    items.add(LocaleController.getString("AddToSavedMessages", R.string.AddToSavedMessages));
+                                    options.add(nkbtn_savemessage);
+                                    icons.add(R.drawable.baseline_bookmark_24);
+                                }
                             }
                             boolean allowRepeat = currentUser != null
                                     || (currentChat != null && ChatObject.canSendMessages(currentChat));
-                            if (allowRepeat && NekomuraConfig.showRepeat.Bool()) {
+                            if (allowRepeat && NekomuraConfig.showRepeat.Bool() && !noforward) {
                                 items.add(LocaleController.getString("Repeat", R.string.Repeat));
                                 options.add(nkbtn_repeat);
                                 icons.add(R.drawable.msg_repeat);
@@ -27776,14 +27784,33 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
     }
 
     private void repeatMessage(boolean isLongClick) {
-        // TODO remove about selectedObject.replyMessageObject
-        boolean isNoForwards = getMessagesController().isChatNoForwardsOffical(currentChat);
-
         if (checkSlowMode(chatActivityEnterView.getSendButton())) {
             return;
         }
+        final ArrayList<MessageObject> messages = new ArrayList<>();
+        if (selectedObject != null)
+            messages.add(selectedObject);
+        else {
+            for (int k = 0; k < selectedMessagesIds[0].size(); k++)
+                if (selectedMessagesIds[0].get(selectedMessagesIds[0].keyAt(k)) != null)
+                    messages.add(selectedMessagesIds[0].get(selectedMessagesIds[0].keyAt(k)));
+        }
+        if (!NekomuraConfig.repeatConfirm.Bool()) {
+            doRepeatMessage(isLongClick, messages);
+            return;
+        }
 
-        // copy
+        AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
+        builder.setTitle(LocaleController.getString("Repeat", R.string.Repeat));
+        builder.setMessage(LocaleController.getString("repeatConfirmText", R.string.repeatConfirmText));
+        builder.setPositiveButton(LocaleController.getString("OK", R.string.OK), (dialogInterface, i) -> {
+            doRepeatMessage(isLongClick, messages);
+        });
+        builder.setNegativeButton(LocaleController.getString("Cancel", R.string.Cancel), null);
+        showDialog(builder.create());
+    }
+
+    private void doRepeatMessage(boolean isLongClick, ArrayList<MessageObject> messages) {
         if (selectedObject != null && (isLongClick || isThreadChat()) && selectedObject.replyMessageObject != null) {
             // If selected message contains `replyTo`:
             // When longClick it will reply to the `replyMessage` of selectedMessage
@@ -27808,28 +27835,6 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
             return;
         }
 
-        final ArrayList<MessageObject> messages = new ArrayList<>();
-        if (selectedObject != null)
-            messages.add(selectedObject);
-        else {
-            for (int k = 0; k < selectedMessagesIds[0].size(); k++)
-                if (selectedMessagesIds[0].get(selectedMessagesIds[0].keyAt(k)) != null)
-                    messages.add(selectedMessagesIds[0].get(selectedMessagesIds[0].keyAt(k)));
-        }
-
-        // forward
-        if (!NekomuraConfig.repeatConfirm.Bool()) {
-            forwardMessages(messages, false, false, true, 0);
-            return;
-        }
-
-        AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
-        builder.setTitle(LocaleController.getString("Repeat", R.string.Repeat));
-        builder.setMessage(LocaleController.getString("repeatConfirmText", R.string.repeatConfirmText));
-        builder.setPositiveButton(LocaleController.getString("OK", R.string.OK), (dialogInterface, i) -> {
-            forwardMessages(messages, false, false, true, 0);
-        });
-        builder.setNegativeButton(LocaleController.getString("Cancel", R.string.Cancel), null);
-        showDialog(builder.create());
+        forwardMessages(messages, false, false, true, 0);
     }
 }
