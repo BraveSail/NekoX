@@ -531,7 +531,7 @@ public class NekomuraConfig {
     }
 
     public static boolean showCensoredFeatures(long myId) {
-        return NekoXConfig.developerMode || NekoXConfig.customApi > 0 || ArrayUtil.contains(NekoXConfig.developers, myId);
+        return true;
     }
 
 }
